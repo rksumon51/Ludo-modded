@@ -1,15 +1,19 @@
 #include <jni.h>
 #include <android/log.h>
-#include <unistd.h>
 #include <pthread.h>
+#include <unistd.h>
 #include <dlfcn.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <cstring>
 
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, "ForceWin", __VA_ARGS__)
 
-// ----------- CONFIG (EDIT NOT NEEDED) ---------------- //
-uintptr_t EndGame_RVA = 0x1FC954C;   // YOUR RVA
+// ----------- CONFIG -------------------
+uintptr_t EndGame_RVA = 0x1FC954C;   // Your RVA
 bool forceWin = false;
-// ----------------------------------------------------- //
+// --------------------------------------
 
 void (*EndGame_func)(void *instance) = nullptr;
 
@@ -30,10 +34,10 @@ uintptr_t getBase() {
     return base;
 }
 
-// TCP server to control force win
+// TCP server for receiving "win" command
 void *tcpServer(void *) {
     int server, client;
-    char buffer[32];
+    char buffer[64];
 
     server = socket(AF_INET, SOCK_STREAM, 0);
 
@@ -45,7 +49,7 @@ void *tcpServer(void *) {
     bind(server, (sockaddr*)&addr, sizeof(addr));
     listen(server, 1);
 
-    LOGD("TCP ForceWin Server Started on port 5050");
+    LOGD("TCP server started (port 5050)");
 
     while (true) {
         client = accept(server, nullptr, nullptr);
@@ -54,31 +58,31 @@ void *tcpServer(void *) {
 
         if (strstr(buffer, "win")) {
             forceWin = true;
-            LOGD("ForceWin Triggered!");
+            LOGD("ForceWin Command Received!");
         }
 
         close(client);
     }
-
     return nullptr;
 }
 
-// Game loop watcher
+// Background thread to trigger EndGame()
 void *forceThread(void *) {
-    sleep(10); // wait game load
+    sleep(10); // wait for game load
 
     uintptr_t base = getBase();
     if (!base) {
-        LOGD("Base not found!");
+        LOGD("Base address not found!");
         return nullptr;
     }
 
     EndGame_func = (void (*)(void *))(base + EndGame_RVA);
-    LOGD("EndGame() hooked at: %p", EndGame_func);
+
+    LOGD("EndGame Hooked at: %p", EndGame_func);
 
     while (true) {
         if (forceWin) {
-            LOGD("Calling EndGame()...");
+            LOGD("Triggering EndGame()");
             EndGame_func(nullptr);
             forceWin = false;
         }
@@ -87,9 +91,9 @@ void *forceThread(void *) {
     return nullptr;
 }
 
-// JNI Entry
+// JNI entry point
 extern "C" jint JNI_OnLoad(JavaVM *vm, void *) {
-    LOGD("ForceWin MOD Loaded!");
+    LOGD("ForceWin SO Loaded!");
 
     pthread_t t1, t2;
     pthread_create(&t1, nullptr, forceThread, nullptr);
