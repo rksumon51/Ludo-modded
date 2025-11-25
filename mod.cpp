@@ -3,10 +3,15 @@
 #include <pthread.h>
 #include <unistd.h>
 #include <dlfcn.h>
+
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#include <cstring>
+
+// C / C++ std headers for FILE, fopen, sscanf, memset, strstr, etc.
+#include <cstdio>   // FILE, fopen, sscanf, printf
+#include <cstdlib>  // exit, malloc, free (if needed)
+#include <cstring>  // memset, strstr, strcmp, strlen
 
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, "ForceWin", __VA_ARGS__)
 
@@ -26,6 +31,7 @@ uintptr_t getBase() {
     char line[512];
     while (fgets(line, sizeof(line), fp)) {
         if (strstr(line, "libil2cpp.so")) {
+            // scan hex base
             sscanf(line, "%lx", &base);
             break;
         }
@@ -40,27 +46,46 @@ void *tcpServer(void *) {
     char buffer[64];
 
     server = socket(AF_INET, SOCK_STREAM, 0);
+    if (server < 0) {
+        LOGD("socket() failed");
+        return nullptr;
+    }
 
     sockaddr_in addr{};
     addr.sin_family = AF_INET;
     addr.sin_port = htons(5050);
     addr.sin_addr.s_addr = INADDR_ANY;
 
-    bind(server, (sockaddr*)&addr, sizeof(addr));
-    listen(server, 1);
+    if (bind(server, (sockaddr*)&addr, sizeof(addr)) < 0) {
+        LOGD("bind() failed");
+        close(server);
+        return nullptr;
+    }
+
+    if (listen(server, 1) < 0) {
+        LOGD("listen() failed");
+        close(server);
+        return nullptr;
+    }
 
     LOGD("TCP server started (port 5050)");
 
     while (true) {
         client = accept(server, nullptr, nullptr);
-        memset(buffer, 0, sizeof(buffer));
-        read(client, buffer, sizeof(buffer));
-
-        if (strstr(buffer, "win")) {
-            forceWin = true;
-            LOGD("ForceWin Command Received!");
+        if (client < 0) {
+            LOGD("accept() failed");
+            continue;
         }
 
+        memset(buffer, 0, sizeof(buffer));
+        ssize_t r = read(client, buffer, sizeof(buffer)-1);
+        if (r > 0) {
+            buffer[r] = '\0';
+            if (strstr(buffer, "win")) {
+                forceWin = true;
+                LOGD("ForceWin Command Received!");
+            }
+        }
         close(client);
     }
     return nullptr;
@@ -83,7 +108,7 @@ void *forceThread(void *) {
     while (true) {
         if (forceWin) {
             LOGD("Triggering EndGame()");
-            EndGame_func(nullptr);
+            if (EndGame_func) EndGame_func(nullptr);
             forceWin = false;
         }
         usleep(200000);
