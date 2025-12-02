@@ -8,22 +8,25 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Android NDK
-        uses: android-actions/setup-ndk@v2
+      - name: Setup Android NDK (r25b)
+        uses: nttld/setup-ndk@v1
         with:
-          ndk-version: 'r25b'
+          ndk-version: r25b
 
-      - name: Configure & build (armeabi-v7a)
+      - name: Configure & Build (armeabi-v7a)
         run: |
           mkdir -p build
           cd build
           cmake -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
-                -DANDROID_ABI=armeabi-v7a -DANDROID_PLATFORM=android-19 ..
-          cmake --build . --target mod -j$(nproc || echo 2)
+                -DANDROID_ABI=armeabi-v7a \
+                -DANDROID_PLATFORM=android-19 \
+                ..
+          cmake --build . --target mod -j$(nproc)
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
