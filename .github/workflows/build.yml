@@ -1,4 +1,4 @@
-name: Build SO
+name: Build libmod_patch32
 
 on:
   push:
@@ -8,59 +8,25 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    env:
-      NDK_VERSION: android-ndk-r25b
-      ANDROID_API: 24
-
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    - name: Install build dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y cmake ninja-build unzip build-essential wget
+      - name: Setup Android NDK
+        uses: android-actions/setup-ndk@v2
+        with:
+          ndk-version: 'r25b'
 
-    - name: Download Android NDK
-      run: |
-        NDK_URL="https://dl.google.com/android/repository/${NDK_VERSION}-linux.zip"
-        echo "Downloading NDK from: $NDK_URL"
-        wget -q "$NDK_URL" -O ndk.zip
-        unzip -q ndk.zip
-        # ensure directory name is consistent
-        if [ -d "${NDK_VERSION}" ]; then
-          mv "${NDK_VERSION}" android-ndk
-        else
-          # fallback if versioned folder name differs
-          mv android-* android-ndk || true
-        fi
-        ls -la android-ndk | sed -n '1,20p'
+      - name: Configure & build (armeabi-v7a)
+        run: |
+          mkdir -p build
+          cd build
+          cmake -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
+                -DANDROID_ABI=armeabi-v7a -DANDROID_PLATFORM=android-19 ..
+          cmake --build . --target mod -j$(nproc || echo 2)
 
-    - name: Configure CMake for Android (arm64)
-      run: |
-        mkdir -p build
-        cmake -S . -B build \
-          -DANDROID_NDK=$PWD/android-ndk \
-          -DANDROID_ABI=arm64-v8a \
-          -DCMAKE_TOOLCHAIN_FILE=$PWD/android-ndk/build/cmake/android.toolchain.cmake \
-          -DANDROID_PLATFORM=android-${ANDROID_API} \
-          -DCMAKE_BUILD_TYPE=Release
-
-    - name: Build libmod.so
-      run: |
-        cmake --build build --config Release -- -j$(nproc)
-
-    - name: Show build output files (debug)
-      run: |
-        echo "Listing build directory:"
-        ls -la build || true
-        echo "Find any lib*.so:"
-        find build -name "lib*.so" -maxdepth 4 -print || true
-
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: libmod
-        path: |
-          build/libmod.so
-          build/**/libmod.so
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: libmod_arm32
+          path: build/libmod.so
